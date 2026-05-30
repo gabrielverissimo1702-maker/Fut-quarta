@@ -464,6 +464,15 @@ function renderStats(session) {
   const activePlayers = session.players;
   const topGoals = [...activePlayers].sort((a, b) => b.goals - a.goals)[0];
   const topWins = [...activePlayers].sort((a, b) => b.wins - a.wins)[0];
+  const goalRanking = [...activePlayers].sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, "pt-BR"));
+  const winRanking = [...activePlayers].sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name, "pt-BR"));
+  const renderRanking = (players, stat) => players.map((player, index) => `
+    <div class="ranking-row ${index < 3 ? "podium" : ""}">
+      <span class="ranking-position">${index + 1}</span>
+      <span class="ranking-name">${esc(player.name)}</span>
+      <strong class="ranking-value">${player[stat]}</strong>
+    </div>
+  `).join("");
   return `
     <main class="page">
       <section class="card hero"><p class="eyebrow">Resumo da rodada</p><h2>Números do futebol</h2><p>Estatísticas atualizadas conforme as partidas são encerradas.</p></section>
@@ -476,6 +485,19 @@ function renderStats(session) {
         <div class="stack">
           <div class="stat"><span class="stat-label">Artilheiro</span><div class="split" style="margin-top:7px"><strong>${esc(topGoals?.name || "Sem gols")}</strong><span class="pill">${topGoals?.goals || 0} gols</span></div></div>
           <div class="stat"><span class="stat-label">Mais vitórias</span><div class="split" style="margin-top:7px"><strong>${esc(topWins?.name || "Sem jogos")}</strong><span class="pill">${topWins?.wins || 0} vitórias</span></div></div>
+        </div>
+      </section>
+      <section>
+        <div class="section-head"><h2>Rankings do dia</h2><span class="badge">${activePlayers.length} jogadores</span></div>
+        <div class="rankings-grid">
+          <article class="card ranking-card">
+            <div class="ranking-head"><span class="team-label">Artilharia</span><span class="muted small">Gols</span></div>
+            ${renderRanking(goalRanking, "goals") || `<div class="empty">Sem jogadores.</div>`}
+          </article>
+          <article class="card ranking-card">
+            <div class="ranking-head"><span class="team-label">Vitórias</span><span class="muted small">Jogos</span></div>
+            ${renderRanking(winRanking, "wins") || `<div class="empty">Sem jogadores.</div>`}
+          </article>
         </div>
       </section>
     </main>`;

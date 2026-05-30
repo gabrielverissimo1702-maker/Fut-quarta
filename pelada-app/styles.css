@@ -218,6 +218,16 @@ h3 { font-size: 14px; }
 .stat { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(7, 19, 15, 0.58); }
 .stat-value { display: block; margin-bottom: 4px; color: var(--brand); font-size: 26px; font-weight: 900; }
 .stat-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
+.rankings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ranking-card { padding: 10px; }
+.ranking-head { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 2px 2px 8px; border-bottom: 1px solid var(--line); }
+.ranking-head .team-label { font-size: 11px; }
+.ranking-row { display: flex; align-items: center; gap: 5px; min-height: 34px; border-bottom: 1px solid var(--line); }
+.ranking-row:last-child { border-bottom: 0; }
+.ranking-position { width: 17px; color: var(--muted); font-size: 10px; font-weight: 900; text-align: center; }
+.ranking-name { flex: 1; min-width: 0; overflow: hidden; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.ranking-value { color: var(--brand); font-size: 12px; }
+.ranking-row.podium .ranking-position { color: var(--warning); }
 .history-item { display: grid; gap: 7px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .history-item:last-child { border-bottom: 0; }
 .history-score { font-size: 20px; font-weight: 900; }
