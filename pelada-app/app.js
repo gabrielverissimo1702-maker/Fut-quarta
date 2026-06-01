@@ -2,6 +2,7 @@ const STORE_KEY = "quarta-fc-v1";
 const TEAM_SIZE = 6;
 const MATCH_SECONDS = 10 * 60;
 const MAX_PLAYERS = 28;
+const APP_VERSION = "2026.06.01.1800";
 
 const ui = {
   page: "home",
@@ -91,14 +92,33 @@ function createSession(name, date) {
   render();
 }
 
-async function addPlayer(name) {
+function addPlayer(name, saved = null) {
   const session = active();
   const cleanName = name.trim();
   if (!cloud.canEdit() || !session || !cleanName || activePlayerCount(session) >= MAX_PLAYERS) return;
-  const saved = cloud.client && cloud.club ? await cloud.registerWalkIn(cleanName) : null;
   const player = { id: saved?.id || uid("player"), name: saved?.nickname || saved?.name || cleanName, fullName: saved?.name || cleanName, goals: 0, wins: 0 };
   session.players.push(player);
   if (session.generated) appendPlayers(session, [player]);
+  save();
+  render();
+}
+
+function addRegisteredPlayer(playerId) {
+  const session = active();
+  const saved = cloud.players.find((player) => player.id === playerId);
+  if (!cloud.canEdit() || !session || !saved || activePlayerCount(session) >= MAX_PLAYERS) return;
+  if (session.players.some((player) => player.id === saved.id)) return;
+  const player = { id: saved.id, name: saved.nickname || saved.name, fullName: saved.name, goals: 0, wins: 0 };
+  session.players.push(player);
+  if (session.generated) appendPlayers(session, [player]);
+  save();
+  render();
+}
+
+function removeAttendance(playerId) {
+  const session = active();
+  if (!cloud.canEdit() || !session || session.generated) return;
+  session.players = session.players.filter((player) => player.id !== playerId);
   save();
   render();
 }
@@ -420,31 +440,62 @@ function renderClubDashboard() {
     </section>
     ${cloud.notice ? `<p class="notice">${esc(cloud.notice)}</p>` : ""}
     ${cloud.isOwner() ? `<section class="card"><div class="section-head"><div><p class="eyebrow">Compartilhar</p><h2>Codigo de visualizacao</h2></div><span class="access-code">${esc(cloud.club.view_code || "Disponivel na criacao")}</span></div><p class="muted small">Este codigo e fixo. Quem usar pode acompanhar a pelada sem alterar dados.</p></section>` : ""}
-    <div class="grid two">
-      <div class="stat"><span class="stat-value">${cloud.players.length}</span><span class="stat-label">Jogadores</span></div>
-      <div class="stat"><span class="stat-value">${cloud.rounds.length}</span><span class="stat-label">Rodadas</span></div>
+    <div class="dashboard-grid">
+      <button class="card dashboard-card" data-action="club-section" data-section="roster"><span class="stat-value">${cloud.players.length}</span><span class="stat-label">Jogadores cadastrados</span><small>Ver elenco completo ›</small></button>
+      <button class="card dashboard-card" data-action="club-section" data-section="rounds"><span class="stat-value">${cloud.rounds.length}</span><span class="stat-label">Saves anteriores</span><small>Ver rodadas ›</small></button>
+      <button class="card dashboard-card wide" data-action="club-section" data-section="general-stats"><span class="stat-value">${general.reduce((sum, player) => sum + Number(player.goals || 0), 0)}</span><span class="stat-label">Gols acumulados</span><small>Ver estatisticas gerais ›</small></button>
     </div>
-    <section class="card"><div class="section-head"><h2>Saves anteriores</h2><span class="badge">${cloud.rounds.length}</span></div><div class="stack">
-      ${cloud.rounds.map((round) => `<button class="btn full split" data-action="open-round" data-round="${round.id}"><span style="text-align:left">${esc(round.name)}<br><small class="muted">${formatDate(round.round_date)} · ${round.finalized ? "finalizada" : "em andamento"}</small></span><span>›</span></button>`).join("") || `<div class="empty">Nenhuma rodada criada ainda.</div>`}
-    </div></section>
-    <section class="card"><div class="section-head"><div><p class="eyebrow">Elenco fixo</p><h2>Jogadores cadastrados</h2></div>${cloud.isOwner() ? `<button class="btn small-btn" data-action="open-add-roster">+ Jogador</button>` : ""}</div>
-      ${cloud.players.map((player) => `<div class="player"><span class="number">${esc(player.initials)}</span><span class="player-name">${esc(player.nickname || player.name)}<br><small class="muted">${esc(player.name)}</small></span>${player.position ? `<span class="pill">${esc(player.position)}</span>` : ""}</div>`).join("") || `<div class="empty">Cadastre os jogadores uma vez e selecione os presentes em cada rodada.</div>`}
-    </section>
-    <section class="card"><div class="section-head"><div><p class="eyebrow">Somatorio das rodadas</p><h2>Estatisticas gerais</h2></div></div>
-      ${general.map((player, index) => `<div class="general-stat-row"><span class="ranking-position">${index + 1}</span><span class="ranking-name">${esc(player.nickname || player.name)}</span><span class="pill">${player.games} J</span><span class="pill">${player.wins} V</span><span class="pill">${player.goals} G</span></div>`).join("") || `<div class="empty">As estatisticas acumuladas aparecerao apos as rodadas.</div>`}
+    <section class="card"><div class="section-head"><div><p class="eyebrow">Ultimos saves</p><h2>Rodadas recentes</h2></div><button class="btn small-btn" data-action="club-section" data-section="rounds">Ver todos</button></div>
+      ${cloud.rounds.slice(0, 3).map((round) => `<button class="btn full split" data-action="open-round" data-round="${round.id}"><span style="text-align:left">${esc(round.name)}<br><small class="muted">${formatDate(round.round_date)}</small></span><span>›</span></button>`).join("") || `<div class="empty">Nenhuma rodada criada ainda.</div>`}
     </section>
     ${cloud.isOwner() ? `<button class="btn full" data-action="rotate-edit-code">Gerar novo codigo de edicao</button>` : ""}
     <button class="btn full" data-action="close-club">Voltar</button>
   </main>`;
 }
 
+function clubSectionHead(eyebrow, title) {
+  return `<section class="section-page-head"><button class="btn small-btn" data-action="club-section" data-section="dashboard">‹ Voltar</button><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div></section>`;
+}
+
+function renderClubRoster() {
+  return `<main class="page">${clubSectionHead("Elenco fixo", "Jogadores cadastrados")}
+    <section class="card"><div class="section-head"><span class="badge">${cloud.players.length} jogadores</span>${cloud.isOwner() ? `<button class="btn primary small-btn" data-action="open-add-roster">+ Jogador</button>` : ""}</div>
+      ${cloud.players.map((player) => `<div class="player"><span class="player-name">${esc(player.nickname || player.name)}${player.nickname ? `<br><small class="muted">${esc(player.name)}</small>` : ""}</span>${cloud.isOwner() ? `<button class="icon-btn" data-action="confirm-remove-roster" data-player="${player.id}" aria-label="Remover ${esc(player.name)}">×</button>` : ""}</div>`).join("") || `<div class="empty">Cadastre os jogadores uma vez e selecione os presentes em cada rodada.</div>`}
+    </section></main>`;
+}
+
+function renderClubRounds() {
+  return `<main class="page">${clubSectionHead("Historico", "Saves anteriores")}
+    <section class="card"><div class="section-head"><span class="badge">${cloud.rounds.length} rodadas</span>${cloud.canEdit() ? `<button class="btn primary small-btn" data-action="open-create-round">+ Rodada</button>` : ""}</div><div class="stack">
+      ${cloud.rounds.map((round) => `<div class="save-row"><button class="btn full split" data-action="open-round" data-round="${round.id}"><span style="text-align:left">${esc(round.name)}<br><small class="muted">${formatDate(round.round_date)} · ${round.finalized ? "finalizada" : "em andamento"}</small></span><span>›</span></button>${cloud.isOwner() ? `<button class="icon-btn" data-action="confirm-delete-round" data-round="${round.id}" aria-label="Apagar ${esc(round.name)}">×</button>` : ""}</div>`).join("") || `<div class="empty">Nenhuma rodada criada ainda.</div>`}
+    </div></section></main>`;
+}
+
+function renderGeneralStats() {
+  const byGoals = [...cloud.totals].sort((a, b) => Number(b.goals) - Number(a.goals) || a.name.localeCompare(b.name, "pt-BR"));
+  const byWins = [...cloud.totals].sort((a, b) => Number(b.wins) - Number(a.wins) || a.name.localeCompare(b.name, "pt-BR"));
+  const ranking = (players, field, suffix) => players.map((player, index) => `<div class="ranking-row ${index < 3 ? "podium" : ""}"><span class="ranking-position">${index + 1}</span><span class="ranking-name">${esc(player.nickname || player.name)}</span><strong class="ranking-value">${player[field]} ${suffix}</strong></div>`).join("");
+  return `<main class="page">${clubSectionHead("Somatorio das rodadas", "Estatisticas gerais")}
+    <div class="rankings-grid"><article class="card ranking-card"><div class="ranking-head"><span class="team-label">Artilharia</span></div>${ranking(byGoals, "goals", "G") || `<div class="empty">Sem dados.</div>`}</article><article class="card ranking-card"><div class="ranking-head"><span class="team-label">Vitorias</span></div>${ranking(byWins, "wins", "V") || `<div class="empty">Sem dados.</div>`}</article></div>
+    <section class="card"><div class="section-head"><h2>Todos os jogadores</h2></div>${cloud.totals.map((player) => `<div class="general-stat-row"><span class="ranking-name">${esc(player.nickname || player.name)}</span><span class="pill">${player.games} J</span><span class="pill">${player.wins} V</span><span class="pill">${player.goals} G</span></div>`).join("") || `<div class="empty">As estatisticas aparecerao apos as rodadas.</div>`}</section>
+  </main>`;
+}
+
 function renderList(session) {
   const activeCount = activePlayerCount(session);
   const listFull = activeCount >= MAX_PLAYERS;
+  const presentIds = new Set(session.players.map((player) => player.id));
+  const availablePlayers = cloud.players.filter((player) => !presentIds.has(player.id));
   return `
     <main class="page">
       <section class="card">
         <div class="section-head"><div><p class="eyebrow">Ordem de chegada</p><h2>Lista de jogadores</h2></div><span class="badge">${activeCount}/${MAX_PLAYERS}</span></div>
+        <p class="muted small" style="margin-bottom:10px">Toque nos cadastrados conforme eles chegam. A ordem dos cliques define a fila do dia.</p>
+        <div class="registered-grid">
+          ${availablePlayers.map((player) => `<button class="btn registered-player" data-action="add-registered" data-player="${player.id}" ${listFull || !cloud.canEdit() ? "disabled" : ""}>+ ${esc(player.nickname || player.name)}</button>`).join("") || `<span class="muted small">Todos os cadastrados já foram adicionados.</span>`}
+        </div>
+        <div class="divider"></div>
+        <p class="eyebrow">Jogador novo ou avulso</p>
         <form class="add-form" data-form="add-player">
           <input class="input" name="name" placeholder="${listFull ? "Lista completa" : "Nome do jogador"}" autocomplete="off" required ${listFull ? "disabled" : ""} />
           <button class="btn primary" type="submit" ${listFull || !cloud.canEdit() ? "disabled" : ""}>Adicionar</button>
@@ -459,7 +510,7 @@ function renderList(session) {
       ` : `
         <section class="card">
           <div class="section-head"><h2>Inscritos</h2><span class="badge">${session.players.length}/12 mínimo</span></div>
-          ${session.players.map((player, index) => `<div class="player"><span class="number">${index + 1}</span><span class="player-name">${esc(player.name)}</span><button class="icon-btn" data-action="delete-before-generate" data-player="${player.id}" aria-label="Excluir ${esc(player.name)}">×</button></div>`).join("") || `<div class="empty">Adicione os jogadores na ordem em que chegaram.</div>`}
+          ${session.players.map((player, index) => `<div class="player"><span class="number">${index + 1}</span><span class="player-name">${esc(player.name)}</span><button class="icon-btn" data-action="remove-attendance" data-player="${player.id}" aria-label="Retirar ${esc(player.name)} da lista">×</button></div>`).join("") || `<div class="empty">Adicione os jogadores na ordem em que chegaram.</div>`}
         </section>`}
       <section class="card">
         <div class="section-head"><div><p class="eyebrow">Lesão ou desistência</p><h2>Fora da pelada</h2></div><span class="badge">${session.removed.length}</span></div>
@@ -598,11 +649,19 @@ function renderModal(session) {
     return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Nova casa</p><h2>Criar pelada fixa</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-club"><div class="field"><label>Nome da pelada</label><input class="input" name="name" placeholder="Ex.: Fut 100 Qualidade" required /></div><div class="field"><label>Iniciais ou escudo</label><input class="input" name="initials" maxlength="4" placeholder="Ex.: F100" required /></div><button class="btn primary full">Criar pelada</button></form></section></div>`;
   }
   if (ui.modal.type === "add-roster") {
-    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Elenco fixo</p><h2>Cadastrar jogador</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="add-roster"><div class="field"><label>Nome completo</label><input class="input" name="name" required /></div><div class="field"><label>Apelido</label><input class="input" name="nickname" /></div><div class="grid two"><div class="field"><label>Iniciais</label><input class="input" name="initials" maxlength="3" /></div><div class="field"><label>Posicao opcional</label><input class="input" name="position" placeholder="Ex.: GOL" /></div></div><button class="btn primary full">Cadastrar jogador</button></form></section></div>`;
+    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Elenco fixo</p><h2>Cadastrar jogador</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="add-roster"><div class="field"><label>Nome completo</label><input class="input" name="name" required /></div><div class="field"><label>Apelido opcional</label><input class="input" name="nickname" /></div><button class="btn primary full">Cadastrar jogador</button></form></section></div>`;
   }
   if (ui.modal.type === "create-round") {
     const today = new Date().toISOString().slice(0, 10);
-    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Novo save</p><h2>Criar rodada</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-round"><div class="field"><label>Nome</label><input class="input" name="name" value="${roundDefaultName()}" required /></div><div class="field"><label>Data</label><input class="input" name="date" type="date" value="${today}" required /></div><div><div class="section-head"><h3>Quem veio hoje?</h3><span class="badge">${cloud.players.length} cadastrados</span></div><div class="presence-list">${cloud.players.map((player) => `<label class="presence-row"><input type="checkbox" name="present" value="${player.id}" /><span>${esc(player.nickname || player.name)}</span></label>`).join("") || `<div class="empty">Cadastre jogadores no elenco antes de criar a rodada.</div>`}</div></div><button class="btn primary full" ${!cloud.players.length ? "disabled" : ""}>Criar rodada</button></form></section></div>`;
+    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Novo save</p><h2>Criar rodada</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-round"><div class="field"><label>Nome</label><input class="input" name="name" value="${roundDefaultName()}" required /></div><div class="field"><label>Data</label><input class="input" name="date" type="date" value="${today}" required /></div><p class="muted small">Depois de criar, adicione os presentes pela Lista na ordem em que chegarem.</p><button class="btn primary full">Criar rodada</button></form></section></div>`;
+  }
+  if (ui.modal.type === "remove-roster") {
+    const player = cloud.players.find((item) => item.id === ui.modal.playerId);
+    return `<div class="modal-wrap"><section class="modal"><p class="eyebrow">Remover jogador</p><h2>${esc(player?.nickname || player?.name || "Jogador")}</h2><p class="muted small" style="margin-top:8px">Ele deixará de aparecer no elenco para as próximas rodadas. O histórico anterior será preservado.</p><div class="grid two" style="margin-top:15px"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="remove-roster" data-player="${ui.modal.playerId}">Remover</button></div></section></div>`;
+  }
+  if (ui.modal.type === "delete-round") {
+    const round = cloud.rounds.find((item) => item.id === ui.modal.roundId);
+    return `<div class="modal-wrap"><section class="modal"><p class="eyebrow">Apagar save</p><h2>${esc(round?.name || "Rodada")}</h2><p class="muted small" style="margin-top:8px">Esta ação remove a rodada e suas estatísticas. Ela não pode ser desfeita.</p><div class="grid two" style="margin-top:15px"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="delete-round" data-round="${ui.modal.roundId}">Apagar save</button></div></section></div>`;
   }
   if (ui.modal.type === "create") {
     return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Novo save</p><h2>Criar pelada</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-session"><div class="field"><label>Nome</label><input class="input" name="name" value="Futebol de quarta" required /></div><div class="field"><label>Data</label><input class="input" name="date" type="date" value="${new Date().toISOString().slice(0, 10)}" required /></div><button class="btn primary full" type="submit">Criar e montar lista</button></form></section></div>`;
@@ -638,7 +697,7 @@ function renderNav() {
     ["home", "⌂", "Home"], ["list", "☷", "Lista"], ["teams", "◈", "Times"],
     ["match", "◷", "Jogo"], ["stats", "↑", "Stats"], ["history", "≡", "Histórico"],
   ];
-  return `<nav class="bottom-nav">${items.map(([page, icon, label]) => `<button class="nav-item ${ui.page === page ? "active" : ""}" data-action="nav" data-page="${page}"><span>${icon}</span>${label}</button>`).join("")}</nav>`;
+  return `<nav class="bottom-nav">${items.map(([page, icon, label]) => `<button class="nav-item ${ui.page === page ? "active" : ""}" data-action="nav" data-page="${page}" ${page !== "home" && !active() ? "disabled" : ""}><span>${icon}</span>${label}</button>`).join("")}</nav>`;
 }
 
 function render() {
@@ -648,12 +707,16 @@ function render() {
     return;
   }
   let content = "";
-  let showNav = false;
+  let showNav = Boolean(cloud.club);
   if (!cloud.configured) content = renderSetup();
   else if (!cloud.club) content = cloud.user ? renderClubs() : renderAccess();
-  else if (!session || ui.page === "home") content = renderClubDashboard();
+  else if (!session || ui.page === "home") {
+    if (ui.clubSection === "roster") content = renderClubRoster();
+    else if (ui.clubSection === "rounds") content = renderClubRounds();
+    else if (ui.clubSection === "general-stats") content = renderGeneralStats();
+    else content = renderClubDashboard();
+  }
   else {
-    showNav = true;
     if (ui.page === "list") content = renderList(session);
     if (ui.page === "teams") content = renderTeams(session);
     if (ui.page === "match") content = renderMatch(session);
@@ -662,7 +725,7 @@ function render() {
   }
   document.querySelector("#app").innerHTML = `
     <div class="shell">
-      <header class="topbar"><div><p class="eyebrow">Quarta FC</p><h1>${session && showNav ? esc(session.name) : cloud.club ? esc(cloud.club.name) : "Gerenciador de pelada"}</h1></div>${session && showNav ? `<button class="btn small-btn" data-action="nav" data-page="home">Pelada</button>` : ""}</header>
+      <header class="topbar"><div><p class="eyebrow">Quarta FC <span class="app-version">v${APP_VERSION}</span></p><h1>${session && ui.page !== "home" ? esc(session.name) : cloud.club ? esc(cloud.club.name) : "Gerenciador de pelada"}</h1></div>${session && ui.page !== "home" ? `<button class="btn small-btn" data-action="nav" data-page="home">Pelada</button>` : ""}</header>
       ${content}${showNav ? renderNav() : ""}${renderModal(session)}
     </div>`;
 }
@@ -683,12 +746,14 @@ document.addEventListener("submit", async (event) => {
   if (form.dataset.form === "login") return runAction(() => cloud.signIn(form.email.value, form.password.value));
   if (form.dataset.form === "signup") return runAction(() => cloud.signUp(form.email.value, form.password.value));
   if (form.dataset.form === "access-code") return runAction(() => cloud.join(form.code.value));
-  if (form.dataset.form === "create-club") return runAction(() => cloud.createClub(form.name.value, form.initials.value));
+  if (form.dataset.form === "create-club") return runAction(async () => { await cloud.createClub(form.name.value, form.initials.value); ui.modal = null; });
   if (form.dataset.form === "add-roster") return runAction(async () => { await cloud.addRosterPlayer(form); ui.modal = null; });
   if (form.dataset.form === "create-round") return runAction(async () => { await cloud.createRound(form); ui.modal = null; });
   if (form.dataset.form === "create-session") createSession(form.name.value, form.date.value);
   if (form.dataset.form === "add-player") {
-    await addPlayer(form.name.value);
+    const name = form.name.value;
+    const saved = cloud.client && cloud.club ? await cloud.registerWalkIn(name) : null;
+    addPlayer(name, saved);
     form.reset();
   }
 });
@@ -697,12 +762,19 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
-  if (action === "nav") { ui.page = button.dataset.page; ui.modal = null; render(); }
+  if (action === "nav") { ui.page = button.dataset.page; ui.clubSection = "dashboard"; ui.modal = null; render(); }
+  if (action === "club-section") { ui.page = "home"; ui.clubSection = button.dataset.section; ui.modal = null; render(); }
   if (action === "open-create-club") { ui.modal = { type: "create-club" }; render(); }
   if (action === "open-add-roster") { ui.modal = { type: "add-roster" }; render(); }
   if (action === "open-create-round") { ui.modal = { type: "create-round" }; render(); }
   if (action === "open-club") return runAction(() => cloud.openClub(cloud.clubs.find((club) => club.id === button.dataset.club), "owner"));
   if (action === "open-round") cloud.openRound(cloud.rounds.find((round) => round.id === button.dataset.round));
+  if (action === "add-registered") addRegisteredPlayer(button.dataset.player);
+  if (action === "remove-attendance") removeAttendance(button.dataset.player);
+  if (action === "confirm-remove-roster") { ui.modal = { type: "remove-roster", playerId: button.dataset.player }; render(); }
+  if (action === "remove-roster") return runAction(async () => { await cloud.removeRosterPlayer(button.dataset.player); ui.modal = null; });
+  if (action === "confirm-delete-round") { ui.modal = { type: "delete-round", roundId: button.dataset.round }; render(); }
+  if (action === "delete-round") return runAction(async () => { await cloud.deleteRound(button.dataset.round); ui.modal = null; });
   if (action === "close-club") return runAction(() => cloud.closeClub());
   if (action === "logout") return runAction(() => cloud.signOut());
   if (action === "rotate-edit-code") return runAction(() => cloud.rotateEditCode());

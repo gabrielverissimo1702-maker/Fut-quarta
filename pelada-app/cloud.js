@@ -145,11 +145,16 @@ const cloud = {
       p_code: this.code(),
       p_name: form.name.value,
       p_nickname: form.nickname.value,
-      p_initials: form.initials.value,
-      p_position: form.position.value,
+      p_initials: null,
+      p_position: null,
       p_photo_url: null,
     });
     await this.loadPlayers();
+  },
+
+  async removeRosterPlayer(playerId) {
+    await this.rpc("remove_player", { p_player_id: playerId });
+    await Promise.all([this.loadPlayers(), this.loadTotals()]);
   },
 
   async registerWalkIn(name) {
@@ -167,13 +172,9 @@ const cloud = {
   },
 
   async createRound(form) {
-    const selected = [...form.querySelectorAll("[name='present']:checked")]
-      .map((input) => this.players.find((player) => player.id === input.value))
-      .filter(Boolean)
-      .map((player) => ({ id: player.id, name: player.nickname || player.name, fullName: player.name, goals: 0, wins: 0 }));
     const state = {
       name: form.name.value, date: form.date.value, createdAt: new Date().toISOString(),
-      teamCounter: 0, players: selected, removed: [], waiting: [], current: null,
+      teamCounter: 0, players: [], removed: [], waiting: [], current: null,
       games: [], events: [], generated: false,
     };
     const round = await this.rpc("create_round", {
@@ -182,6 +183,14 @@ const cloud = {
     });
     await this.loadRounds();
     this.openRound(round);
+  },
+
+  async deleteRound(roundId) {
+    await this.rpc("delete_round", { p_round_id: roundId });
+    data.sessions = data.sessions.filter((session) => session.id !== roundId);
+    if (data.activeId === roundId) data.activeId = null;
+    await Promise.all([this.loadRounds(), this.loadTotals()]);
+    saveLocal();
   },
 
   openRound(round) {

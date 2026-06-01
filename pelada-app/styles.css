@@ -50,6 +50,7 @@ button { cursor: pointer; }
   letter-spacing: 1.6px;
   text-transform: uppercase;
 }
+.app-version { color: var(--muted); font-size: 8px; letter-spacing: 0.5px; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 21px; letter-spacing: -0.5px; }
 h2 { font-size: 18px; letter-spacing: -0.4px; }
@@ -126,6 +127,15 @@ h3 { font-size: 14px; }
 .presence-row input { width: 17px; height: 17px; accent-color: var(--brand); }
 .general-stat-row { display: flex; align-items: center; gap: 5px; min-height: 39px; border-bottom: 1px solid var(--line); }
 .general-stat-row:last-child { border-bottom: 0; }
+.registered-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.registered-player { min-height: 34px; padding: 0 10px; font-size: 11px; }
+.save-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.dashboard-card { display: grid; gap: 7px; min-height: 122px; color: var(--text); text-align: left; border-color: rgba(112, 245, 167, 0.16); transition: transform 160ms ease, border-color 160ms ease; }
+.dashboard-card.wide { grid-column: 1 / -1; min-height: 105px; }
+.dashboard-card small { align-self: end; color: var(--brand); font-size: 11px; font-weight: 800; }
+.dashboard-card:active { transform: scale(0.98); border-color: var(--brand); }
+.section-page-head { display: flex; align-items: center; gap: 12px; padding: 3px 0; }
 .input, .select {
   width: 100%;
   min-height: 46px;
@@ -273,6 +283,7 @@ h3 { font-size: 14px; }
 }
 .nav-item span { font-size: 17px; line-height: 1; }
 .nav-item.active { color: var(--brand); background: rgba(112, 245, 167, 0.1); }
+.nav-item:disabled { cursor: not-allowed; opacity: 0.35; }
 
 .modal-wrap {
   position: fixed;
