@@ -116,6 +116,16 @@ h3 { font-size: 14px; }
 
 .field { display: grid; gap: 7px; }
 .field label { color: var(--muted); font-size: 12px; font-weight: 700; }
+.notice { padding: 11px 13px; color: var(--warning); font-size: 12px; line-height: 1.5; border: 1px solid rgba(255, 211, 106, 0.26); border-radius: 12px; background: rgba(255, 211, 106, 0.08); }
+.details-title { cursor: pointer; color: var(--brand); font-size: 13px; font-weight: 800; }
+.details-form { margin-top: 14px; }
+.code-input { font-size: 17px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; }
+.access-code { color: var(--brand); font-size: 17px; font-weight: 900; letter-spacing: 2px; }
+.presence-list { max-height: 280px; overflow: auto; border-top: 1px solid var(--line); }
+.presence-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; font-size: 13px; font-weight: 700; border-bottom: 1px solid var(--line); }
+.presence-row input { width: 17px; height: 17px; accent-color: var(--brand); }
+.general-stat-row { display: flex; align-items: center; gap: 5px; min-height: 39px; border-bottom: 1px solid var(--line); }
+.general-stat-row:last-child { border-bottom: 0; }
 .input, .select {
   width: 100%;
   min-height: 46px;

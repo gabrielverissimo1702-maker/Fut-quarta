@@ -20,6 +20,11 @@ function load() {
 }
 
 function save() {
+  saveLocal();
+  cloud.persist(active());
+}
+
+function saveLocal() {
   localStorage.setItem(STORE_KEY, JSON.stringify(data));
 }
 
@@ -86,11 +91,12 @@ function createSession(name, date) {
   render();
 }
 
-function addPlayer(name) {
+async function addPlayer(name) {
   const session = active();
   const cleanName = name.trim();
-  if (!session || !cleanName || activePlayerCount(session) >= MAX_PLAYERS) return;
-  const player = { id: uid("player"), name: cleanName, goals: 0, wins: 0 };
+  if (!cloud.canEdit() || !session || !cleanName || activePlayerCount(session) >= MAX_PLAYERS) return;
+  const saved = cloud.client && cloud.club ? await cloud.registerWalkIn(cleanName) : null;
+  const player = { id: saved?.id || uid("player"), name: saved?.nickname || saved?.name || cleanName, fullName: saved?.name || cleanName, goals: 0, wins: 0 };
   session.players.push(player);
   if (session.generated) appendPlayers(session, [player]);
   save();
@@ -112,7 +118,7 @@ function shuffle(values) {
 
 function generateTeams() {
   const session = active();
-  if (!session || session.players.length < 12) return;
+  if (!cloud.canEdit() || !session || session.players.length < 12) return;
   session.teamCounter = 0;
   session.waiting = [];
   const first = shuffle(session.players.slice(0, 12));
@@ -181,6 +187,7 @@ function findPlayerLocation(session, playerId) {
 
 function removePlayer(playerId) {
   const session = active();
+  if (!cloud.canEdit()) return;
   const location = session && findPlayerLocation(session, playerId);
   if (!location) return;
   const [player] = location.team.players.splice(location.index, 1);
@@ -203,7 +210,7 @@ function removePlayer(playerId) {
 
 function restorePlayer(playerId) {
   const session = active();
-  if (!session || activePlayerCount(session) >= MAX_PLAYERS) return;
+  if (!cloud.canEdit() || !session || activePlayerCount(session) >= MAX_PLAYERS) return;
   const index = session.removed.findIndex((player) => player.id === playerId);
   if (index < 0) return;
   const [removed] = session.removed.splice(index, 1);
@@ -218,7 +225,7 @@ function restorePlayer(playerId) {
 
 function startTimer() {
   const game = active()?.current;
-  if (!game || game.running) return;
+  if (!cloud.canEdit() || !game || game.running) return;
   game.running = true;
   game.startedAt ||= new Date().toISOString();
   ui.timerId = setInterval(() => {
@@ -234,6 +241,7 @@ function startTimer() {
 }
 
 function stopTimer() {
+  if (!cloud.canEdit()) return;
   if (ui.timerId) clearInterval(ui.timerId);
   ui.timerId = null;
   const game = active()?.current;
@@ -243,6 +251,7 @@ function stopTimer() {
 }
 
 function resetTimer() {
+  if (!cloud.canEdit()) return;
   stopTimer();
   const game = active()?.current;
   if (!game) return;
@@ -252,6 +261,7 @@ function resetTimer() {
 }
 
 function addGoal(side, playerId) {
+  if (!cloud.canEdit()) return;
   const session = active();
   const game = session?.current;
   const team = game?.[side];
@@ -266,6 +276,7 @@ function addGoal(side, playerId) {
 }
 
 function removeGoal(side, playerId) {
+  if (!cloud.canEdit()) return;
   const session = active();
   const game = session?.current;
   const team = game?.[side];
@@ -285,6 +296,7 @@ function matchGoals(game, playerId) {
 }
 
 function finishGame(mode, preferredSide = null) {
+  if (!cloud.canEdit()) return;
   stopTimer();
   const session = active();
   const game = session?.current;
@@ -369,6 +381,63 @@ function renderHome() {
     </main>`;
 }
 
+function renderSetup() {
+  return `<main class="page"><section class="card hero"><p class="eyebrow">Configuracao necessaria</p><h2>Conecte o banco de dados</h2><p>Preencha o arquivo <strong>config.js</strong> com a URL e a chave publica do seu projeto Supabase.</p></section><section class="card"><h2>Proximo passo</h2><p class="muted small" style="margin-top:8px;line-height:1.6">Execute o arquivo <strong>supabase-schema.sql</strong> no SQL Editor do Supabase e publique novamente os arquivos do site.</p></section></main>`;
+}
+
+function renderAccess() {
+  return `<main class="page auth-page">
+    <section class="card hero"><p class="eyebrow">Quarta FC</p><h2>Organize a pelada sem deixar o celular preso na lateral.</h2><p>Entre como administrador ou use um codigo para acompanhar e ajudar durante os jogos.</p></section>
+    ${cloud.notice ? `<p class="notice">${esc(cloud.notice)}</p>` : ""}
+    <section class="card"><div class="section-head"><h2>Entrar</h2></div><form class="grid" data-form="login"><input class="input" name="email" type="email" placeholder="Seu e-mail" required /><input class="input" name="password" type="password" placeholder="Sua senha" required /><button class="btn primary full">Entrar</button></form></section>
+    <section class="card"><details><summary class="details-title">Criar cadastro</summary><form class="grid details-form" data-form="signup"><input class="input" name="email" type="email" placeholder="Seu e-mail" required /><input class="input" name="password" type="password" minlength="6" placeholder="Crie uma senha" required /><button class="btn full">Cadastrar</button></form></details></section>
+    <section class="card"><div class="section-head"><div><p class="eyebrow">Acesso rapido</p><h2>Entrar com codigo</h2></div></div><form class="add-form" data-form="access-code"><input class="input code-input" name="code" maxlength="8" placeholder="CODIGO" required /><button class="btn primary">Acessar</button></form></section>
+  </main>`;
+}
+
+function renderClubs() {
+  return `<main class="page">
+    <section class="card hero"><p class="eyebrow">Minhas peladas</p><h2>Escolha sua pelada fixa.</h2><p>Crie quantas peladas quiser. Cada uma possui elenco, rodadas e estatisticas proprias.</p><button class="btn primary full" style="margin-top:16px" data-action="open-create-club">+ Criar pelada fixa</button></section>
+    ${cloud.notice ? `<p class="notice">${esc(cloud.notice)}</p>` : ""}
+    <section class="card"><div class="section-head"><h2>Peladas</h2><span class="badge">${cloud.clubs.length}</span></div><div class="stack">
+      ${cloud.clubs.map((club) => `<button class="btn full split" data-action="open-club" data-club="${club.id}"><span><strong>${esc(club.initials)}</strong> · ${esc(club.name)}</span><span>›</span></button>`).join("") || `<div class="empty">Crie sua primeira pelada fixa.</div>`}
+    </div></section>
+    <button class="btn full" data-action="logout">Sair da conta</button>
+  </main>`;
+}
+
+function roundDefaultName() {
+  const date = new Date();
+  const label = date.toLocaleDateString("pt-BR");
+  return `Quarta ${label}`;
+}
+
+function renderClubDashboard() {
+  const general = cloud.totals;
+  return `<main class="page">
+    <section class="card hero"><p class="eyebrow">${esc(cloud.club.initials)} · pelada fixa</p><h2>${esc(cloud.club.name)}</h2><p>${cloud.mode === "view" ? "Acesso somente para visualizacao." : cloud.mode === "edit" ? "Acesso operacional por codigo." : "Painel do administrador."}</p>
+      ${cloud.canEdit() ? `<button class="btn primary full" style="margin-top:16px" data-action="open-create-round">+ Nova rodada</button>` : ""}
+    </section>
+    ${cloud.notice ? `<p class="notice">${esc(cloud.notice)}</p>` : ""}
+    ${cloud.isOwner() ? `<section class="card"><div class="section-head"><div><p class="eyebrow">Compartilhar</p><h2>Codigo de visualizacao</h2></div><span class="access-code">${esc(cloud.club.view_code || "Disponivel na criacao")}</span></div><p class="muted small">Este codigo e fixo. Quem usar pode acompanhar a pelada sem alterar dados.</p></section>` : ""}
+    <div class="grid two">
+      <div class="stat"><span class="stat-value">${cloud.players.length}</span><span class="stat-label">Jogadores</span></div>
+      <div class="stat"><span class="stat-value">${cloud.rounds.length}</span><span class="stat-label">Rodadas</span></div>
+    </div>
+    <section class="card"><div class="section-head"><h2>Saves anteriores</h2><span class="badge">${cloud.rounds.length}</span></div><div class="stack">
+      ${cloud.rounds.map((round) => `<button class="btn full split" data-action="open-round" data-round="${round.id}"><span style="text-align:left">${esc(round.name)}<br><small class="muted">${formatDate(round.round_date)} · ${round.finalized ? "finalizada" : "em andamento"}</small></span><span>›</span></button>`).join("") || `<div class="empty">Nenhuma rodada criada ainda.</div>`}
+    </div></section>
+    <section class="card"><div class="section-head"><div><p class="eyebrow">Elenco fixo</p><h2>Jogadores cadastrados</h2></div>${cloud.isOwner() ? `<button class="btn small-btn" data-action="open-add-roster">+ Jogador</button>` : ""}</div>
+      ${cloud.players.map((player) => `<div class="player"><span class="number">${esc(player.initials)}</span><span class="player-name">${esc(player.nickname || player.name)}<br><small class="muted">${esc(player.name)}</small></span>${player.position ? `<span class="pill">${esc(player.position)}</span>` : ""}</div>`).join("") || `<div class="empty">Cadastre os jogadores uma vez e selecione os presentes em cada rodada.</div>`}
+    </section>
+    <section class="card"><div class="section-head"><div><p class="eyebrow">Somatorio das rodadas</p><h2>Estatisticas gerais</h2></div></div>
+      ${general.map((player, index) => `<div class="general-stat-row"><span class="ranking-position">${index + 1}</span><span class="ranking-name">${esc(player.nickname || player.name)}</span><span class="pill">${player.games} J</span><span class="pill">${player.wins} V</span><span class="pill">${player.goals} G</span></div>`).join("") || `<div class="empty">As estatisticas acumuladas aparecerao apos as rodadas.</div>`}
+    </section>
+    ${cloud.isOwner() ? `<button class="btn full" data-action="rotate-edit-code">Gerar novo codigo de edicao</button>` : ""}
+    <button class="btn full" data-action="close-club">Voltar</button>
+  </main>`;
+}
+
 function renderList(session) {
   const activeCount = activePlayerCount(session);
   const listFull = activeCount >= MAX_PLAYERS;
@@ -378,14 +447,14 @@ function renderList(session) {
         <div class="section-head"><div><p class="eyebrow">Ordem de chegada</p><h2>Lista de jogadores</h2></div><span class="badge">${activeCount}/${MAX_PLAYERS}</span></div>
         <form class="add-form" data-form="add-player">
           <input class="input" name="name" placeholder="${listFull ? "Lista completa" : "Nome do jogador"}" autocomplete="off" required ${listFull ? "disabled" : ""} />
-          <button class="btn primary" type="submit" ${listFull ? "disabled" : ""}>Adicionar</button>
+          <button class="btn primary" type="submit" ${listFull || !cloud.canEdit() ? "disabled" : ""}>Adicionar</button>
         </form>
         ${listFull ? `<p class="muted small" style="margin-top:9px">Limite de 28 jogadores atingido.</p>` : ""}
-        ${!session.generated ? `<button class="btn full" style="margin-top:9px" data-action="generate" ${session.players.length < 12 ? "disabled" : ""}>Sortear e gerar times ${session.players.length < 12 ? `(${12 - session.players.length} restantes)` : ""}</button>` : ""}
+        ${!session.generated ? `<button class="btn full" style="margin-top:9px" data-action="generate" ${session.players.length < 12 || !cloud.canEdit() ? "disabled" : ""}>Sortear e gerar times ${session.players.length < 12 ? `(${12 - session.players.length} restantes)` : ""}</button>` : ""}
       </section>
       ${session.generated ? `
         <div class="team-grid">
-          ${allActiveTeams(session).map((team) => renderTeam(team, { removable: true })).join("")}
+          ${allActiveTeams(session).map((team) => renderTeam(team, { removable: cloud.canEdit() })).join("")}
         </div>
       ` : `
         <section class="card">
@@ -427,16 +496,16 @@ function renderMatch(session) {
         <div class="section-head"><span class="badge live"><span class="dot"></span> partida atual</span><span class="muted small">10 minutos</span></div>
         <div class="timer">${formatTimer(game.seconds)}</div>
         <div class="timer-actions">
-          <button class="btn primary" data-action="start-timer" ${game.running ? "disabled" : ""}>Iniciar</button>
-          <button class="btn" data-action="stop-timer" ${!game.running ? "disabled" : ""}>Pausar</button>
-          <button class="btn" data-action="reset-timer">Reiniciar</button>
+          <button class="btn primary" data-action="start-timer" ${game.running || !cloud.canEdit() ? "disabled" : ""}>Iniciar</button>
+          <button class="btn" data-action="stop-timer" ${!game.running || !cloud.canEdit() ? "disabled" : ""}>Pausar</button>
+          <button class="btn" data-action="reset-timer" ${!cloud.canEdit() ? "disabled" : ""}>Reiniciar</button>
         </div>
         <div class="scoreboard compact">
           <div class="score-team"><strong>${teamName(game.home)}</strong><span class="score">${game.homeScore}</span></div>
           <div class="score-x">×</div>
           <div class="score-team"><strong>${teamName(game.away)}</strong><span class="score">${game.awayScore}</span></div>
         </div>
-        <button class="btn warning full" style="margin-top:16px" data-action="open-finish">Finalizar partida</button>
+        <button class="btn warning full" style="margin-top:16px" data-action="open-finish" ${!cloud.canEdit() ? "disabled" : ""}>Finalizar partida</button>
       </section>
       <section class="card">
         <div class="section-head"><h2>Súmula</h2><span class="badge">${game.goals.length} gols</span></div>
@@ -449,9 +518,9 @@ function renderMatch(session) {
               const goals = matchGoals(game, player.id);
               return `<div class="scorer-row">
                 <span class="player-name">${esc(player.name)}</span>
-                <button class="score-btn minus" data-action="remove-goal" data-side="${side}" data-player="${player.id}" aria-label="Remover gol de ${esc(player.name)}" ${!goals ? "disabled" : ""}>−</button>
+                <button class="score-btn minus" data-action="remove-goal" data-side="${side}" data-player="${player.id}" aria-label="Remover gol de ${esc(player.name)}" ${!goals || !cloud.canEdit() ? "disabled" : ""}>−</button>
                 <strong class="player-goals">${goals}</strong>
-                <button class="score-btn plus" data-action="goal" data-side="${side}" data-player="${player.id}" aria-label="Adicionar gol de ${esc(player.name)}">+</button>
+                <button class="score-btn plus" data-action="goal" data-side="${side}" data-player="${player.id}" aria-label="Adicionar gol de ${esc(player.name)}" ${!cloud.canEdit() ? "disabled" : ""}>+</button>
               </div>`;
             }).join("")}
           </div>`;
@@ -525,6 +594,16 @@ function renderHistory(session) {
 
 function renderModal(session) {
   if (!ui.modal) return "";
+  if (ui.modal.type === "create-club") {
+    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Nova casa</p><h2>Criar pelada fixa</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-club"><div class="field"><label>Nome da pelada</label><input class="input" name="name" placeholder="Ex.: Fut 100 Qualidade" required /></div><div class="field"><label>Iniciais ou escudo</label><input class="input" name="initials" maxlength="4" placeholder="Ex.: F100" required /></div><button class="btn primary full">Criar pelada</button></form></section></div>`;
+  }
+  if (ui.modal.type === "add-roster") {
+    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Elenco fixo</p><h2>Cadastrar jogador</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="add-roster"><div class="field"><label>Nome completo</label><input class="input" name="name" required /></div><div class="field"><label>Apelido</label><input class="input" name="nickname" /></div><div class="grid two"><div class="field"><label>Iniciais</label><input class="input" name="initials" maxlength="3" /></div><div class="field"><label>Posicao opcional</label><input class="input" name="position" placeholder="Ex.: GOL" /></div></div><button class="btn primary full">Cadastrar jogador</button></form></section></div>`;
+  }
+  if (ui.modal.type === "create-round") {
+    const today = new Date().toISOString().slice(0, 10);
+    return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Novo save</p><h2>Criar rodada</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-round"><div class="field"><label>Nome</label><input class="input" name="name" value="${roundDefaultName()}" required /></div><div class="field"><label>Data</label><input class="input" name="date" type="date" value="${today}" required /></div><div><div class="section-head"><h3>Quem veio hoje?</h3><span class="badge">${cloud.players.length} cadastrados</span></div><div class="presence-list">${cloud.players.map((player) => `<label class="presence-row"><input type="checkbox" name="present" value="${player.id}" /><span>${esc(player.nickname || player.name)}</span></label>`).join("") || `<div class="empty">Cadastre jogadores no elenco antes de criar a rodada.</div>`}</div></div><button class="btn primary full" ${!cloud.players.length ? "disabled" : ""}>Criar rodada</button></form></section></div>`;
+  }
   if (ui.modal.type === "create") {
     return `<div class="modal-wrap"><section class="modal"><div class="section-head"><div><p class="eyebrow">Novo save</p><h2>Criar pelada</h2></div><button class="icon-btn" data-action="close-modal">×</button></div><form class="grid" data-form="create-session"><div class="field"><label>Nome</label><input class="input" name="name" value="Futebol de quarta" required /></div><div class="field"><label>Data</label><input class="input" name="date" type="date" value="${new Date().toISOString().slice(0, 10)}" required /></div><button class="btn primary full" type="submit">Criar e montar lista</button></form></section></div>`;
   }
@@ -564,9 +643,17 @@ function renderNav() {
 
 function render() {
   const session = active();
-  let content = renderHome();
-  if (ui.page !== "home" && !session) ui.page = "home";
-  if (session) {
+  if (!cloud.ready) {
+    document.querySelector("#app").innerHTML = `<main class="page"><section class="card empty">Carregando...</section></main>`;
+    return;
+  }
+  let content = "";
+  let showNav = false;
+  if (!cloud.configured) content = renderSetup();
+  else if (!cloud.club) content = cloud.user ? renderClubs() : renderAccess();
+  else if (!session || ui.page === "home") content = renderClubDashboard();
+  else {
+    showNav = true;
     if (ui.page === "list") content = renderList(session);
     if (ui.page === "teams") content = renderTeams(session);
     if (ui.page === "match") content = renderMatch(session);
@@ -575,31 +662,56 @@ function render() {
   }
   document.querySelector("#app").innerHTML = `
     <div class="shell">
-      <header class="topbar"><div><p class="eyebrow">Quarta FC</p><h1>${session && ui.page !== "home" ? esc(session.name) : "Gerenciador de pelada"}</h1></div>${session && ui.page !== "home" ? `<button class="btn small-btn" data-action="nav" data-page="home">Trocar</button>` : ""}</header>
-      ${content}${renderNav()}${renderModal(session)}
+      <header class="topbar"><div><p class="eyebrow">Quarta FC</p><h1>${session && showNav ? esc(session.name) : cloud.club ? esc(cloud.club.name) : "Gerenciador de pelada"}</h1></div>${session && showNav ? `<button class="btn small-btn" data-action="nav" data-page="home">Pelada</button>` : ""}</header>
+      ${content}${showNav ? renderNav() : ""}${renderModal(session)}
     </div>`;
 }
 
-document.addEventListener("submit", (event) => {
+async function runAction(action) {
+  try {
+    cloud.notice = "";
+    await action();
+  } catch (error) {
+    cloud.notice = error.message || "Nao foi possivel concluir a acao.";
+  }
+  render();
+}
+
+document.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.target;
+  if (form.dataset.form === "login") return runAction(() => cloud.signIn(form.email.value, form.password.value));
+  if (form.dataset.form === "signup") return runAction(() => cloud.signUp(form.email.value, form.password.value));
+  if (form.dataset.form === "access-code") return runAction(() => cloud.join(form.code.value));
+  if (form.dataset.form === "create-club") return runAction(() => cloud.createClub(form.name.value, form.initials.value));
+  if (form.dataset.form === "add-roster") return runAction(async () => { await cloud.addRosterPlayer(form); ui.modal = null; });
+  if (form.dataset.form === "create-round") return runAction(async () => { await cloud.createRound(form); ui.modal = null; });
   if (form.dataset.form === "create-session") createSession(form.name.value, form.date.value);
   if (form.dataset.form === "add-player") {
-    addPlayer(form.name.value);
+    await addPlayer(form.name.value);
     form.reset();
   }
 });
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
   if (action === "nav") { ui.page = button.dataset.page; ui.modal = null; render(); }
+  if (action === "open-create-club") { ui.modal = { type: "create-club" }; render(); }
+  if (action === "open-add-roster") { ui.modal = { type: "add-roster" }; render(); }
+  if (action === "open-create-round") { ui.modal = { type: "create-round" }; render(); }
+  if (action === "open-club") return runAction(() => cloud.openClub(cloud.clubs.find((club) => club.id === button.dataset.club), "owner"));
+  if (action === "open-round") cloud.openRound(cloud.rounds.find((round) => round.id === button.dataset.round));
+  if (action === "close-club") return runAction(() => cloud.closeClub());
+  if (action === "logout") return runAction(() => cloud.signOut());
+  if (action === "rotate-edit-code") return runAction(() => cloud.rotateEditCode());
   if (action === "open-create") { ui.modal = { type: "create" }; render(); }
   if (action === "close-modal") { ui.modal = null; render(); }
   if (action === "open-session") { data.activeId = button.dataset.session; ui.page = "list"; save(); render(); }
   if (action === "generate") generateTeams();
   if (action === "delete-before-generate") {
+    if (!cloud.canEdit()) return;
     const session = active();
     session.players = session.players.filter((player) => player.id !== button.dataset.player);
     save(); render();
@@ -617,4 +729,4 @@ document.addEventListener("click", (event) => {
   if (action === "finish-game") finishGame(button.dataset.mode, button.dataset.side || null);
 });
 
-render();
+cloud.init();
